@@ -16,6 +16,10 @@ rm -f package-lock.json
 echo "discord.js v13.16.0をインストールしています..."
 npm install discord.js@13.16.0 --save-exact
 
+# node-fetchをインストール
+echo "node-fetch v2をインストールしています..."
+npm install node-fetch@2.6.7 --save-exact
+
 # 残りのパッケージをインストール
 echo "その他のパッケージをインストールしています..."
 npm install

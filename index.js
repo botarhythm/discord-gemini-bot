@@ -1,5 +1,9 @@
 // Discord.js v13に完全対応したindex.js
 require('dotenv').config();
+
+// fetchポリフィルを追加
+global.fetch = require('node-fetch');
+
 const { Client, Intents, MessageEmbed, Message } = require('discord.js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const character = require('./config/character');

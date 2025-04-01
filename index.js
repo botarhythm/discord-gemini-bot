@@ -98,6 +98,7 @@ client.on('messageCreate', async message => {
       return message.reply(`
 # ボッチーのヘルプ
 - DMまたはサーバー内でメンションするとAIが応答
+- スレッド内ではメンション不要
 - コマンド一覧:
   - !clear: 履歴クリア
   - !help: ヘルプ表示
@@ -107,7 +108,11 @@ client.on('messageCreate', async message => {
 
   if (!message.guildId) {
     prompt = message.content.trim();
-  } else if (message.content.includes(botMention) || message.mentions.users.has(client.user.id)) {
+  } else if (
+    message.channel.isThread() || 
+    message.content.includes(botMention) || 
+    message.mentions.users.has(client.user.id)
+  ) {
     prompt = message.content.replace(/<@!?\d+>/g, '').trim();
   } else {
     return;

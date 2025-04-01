@@ -1,0 +1,12 @@
+もしNode.jsのバージョン更新がうまくいかない場合、以下のコマンドで互換性のあるバージョンにダウングレードしてください：
+
+npm uninstall discord.js @google/generative-ai
+npm install discord.js@13.16.0
+npm install @google/generative-ai@0.1.3
+
+これらのパッケージの古いバージョンはNode.js 16と互換性があります。
+
+また、ダウングレードする場合はindex.jsの以下の箇所も修正が必要です：
+
+1. Geminiモデル名を "gemini-pro" に変更
+2. intents の設定を Discord.js v13用に変更

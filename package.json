@@ -18,5 +18,11 @@
     "express": "^4.18.2",
     "node-cache": "^5.1.2",
     "web-streams-polyfill": "^4.1.0"
+  },
+  "glitch": {
+    "projectType": "generated_static",
+    "buildDirectory": "",
+    "installDependencies": true,
+    "nodeVersion": "18.19.0"
   }
 }

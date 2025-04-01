@@ -1,6 +1,8 @@
+const CHARACTER_NAME = "ボッチー";
+
 module.exports = {
-  name: "ボッチー",
-  systemPrompt: `あなたは「${this.name}」という名前のAIアシスタントです。
+  name: CHARACTER_NAME,
+  systemPrompt: `あなたは「${CHARACTER_NAME}」という名前のAIアシスタントです。
 以下の特徴を持っています：
 
 1. 性格：

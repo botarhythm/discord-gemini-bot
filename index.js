@@ -1,7 +1,4 @@
-// Discord.js v13に完全対応したindex.js
 require('dotenv').config();
-
-// fetchポリフィルを追加
 global.fetch = require('node-fetch');
 
 const { Client, Intents } = require('discord.js');
@@ -9,7 +6,6 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const character = require('./config/character');
 const express = require('express');
 
-// Discordクライアントの初期化
 const client = new Client({
   intents: [
     Intents.FLAGS.GUILDS,
@@ -19,9 +15,8 @@ const client = new Client({
   partials: ['MESSAGE', 'CHANNEL', 'GUILD_MEMBER']
 });
 
-// Gemini APIの初期化
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ 
+const model = genAI.getGenerativeModel({
   model: "gemini-2.0-flash",
   generationConfig: {
     temperature: 0.7,
@@ -31,7 +26,6 @@ const model = genAI.getGenerativeModel({
   }
 });
 
-// 会話履歴を管理するクラス
 class ConversationHistory {
   constructor() {
     this.histories = new Map();
@@ -70,25 +64,83 @@ class ConversationHistory {
 
 const conversationHistory = new ConversationHistory();
 
-// Expressサーバー設定
 const app = express();
 app.get('/', (req, res) => res.send('Bot is running!'));
 app.listen(process.env.PORT || 3000);
 
-// ボットが準備できたときの処理
 client.once('ready', () => console.log(`Logged in as ${client.user.tag}!`));
 
-// メッセージ処理
+async function braveSearch(query) {
+  console.log(`[検索処理] Brave APIにアクセスします: ${query}`);
+  const response = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}`, {
+    headers: {
+      'Accept': 'application/json',
+      'X-Subscription-Token': process.env.BRAVE_API_KEY
+    }
+  });
+
+  console.log(`[検索処理] Brave APIステータス: ${response.status}`);
+  if (!response.ok) throw new Error(`Brave API error: ${response.statusText}`);
+  const data = await response.json();
+
+  const results = data.web?.results?.slice(0, 3) || [];
+  console.log('[検索処理] Brave Search 結果取得完了:', JSON.stringify(results, null, 2));
+  return results;
+}
+
+async function braveSearchAndSummarize(message, query) {
+  try {
+    const results = await braveSearch(query);
+    if (!results.length) return message.reply('検索結果が見つかりませんでした。');
+
+    const summaryPrompt = `
+以下は「${query}」に関するWebページです。
+各記事を日本語で約200文字以内に要約してください。リンクは不要です。
+
+${results.map((r, i) => `【${i + 1}】${r.title}\n${r.description || r.snippet || ''}`).join('\n\n')}
+`;
+
+    console.log('[検索処理] 要約プロンプト生成完了。Geminiへ送信中...');
+    const result = await model.generateContent(summaryPrompt);
+    const summary = result.response.text();
+
+    console.log('[検索処理] Gemini要約完了');
+    console.log('[検索処理] Gemini応答内容:\n', summary);
+
+    // 各要約ブロックをURLとマージ
+    const blocks = summary.split(/\n\s*\n/);
+    const withLinks = blocks.map((block, i) => {
+      const url = results[i]?.url || '';
+      return `${block.trim()}\n▶︎ 続きを読む: ${url}`;
+    }).join('\n\n');
+
+    if (withLinks.length > 2000) {
+      const chunks = splitMessage(withLinks);
+      for (const chunk of chunks) {
+        await message.reply(chunk);
+      }
+      console.log('[送信] 要約を分割して返信完了');
+    } else {
+      await message.reply(withLinks);
+      console.log('[送信] 要約を返信完了');
+    }
+  } catch (error) {
+    console.error('[送信エラー] 要約の返信中にエラー:', error);
+    await message.reply('検索結果の要約中にエラーが発生しました。ごめんね。');
+  }
+}
+
 client.on('messageCreate', async message => {
   if (message.author.bot) return;
 
   const botMention = `<@${client.user.id}>`;
   const prefix = process.env.PREFIX || '!';
+  const rawContent = message.content;
 
-  let prompt = '';
+  console.log(`[受信] ${message.author.tag}#${message.channel.id}: ${rawContent}`);
 
-  if (message.content.startsWith(prefix)) {
-    const args = message.content.slice(prefix.length).trim().split(/ +/);
+  if (rawContent.startsWith(prefix)) {
+    const args = rawContent.slice(prefix.length).trim().split(/ +/);
     const commandName = args.shift().toLowerCase();
 
     if (commandName === 'clear') {
@@ -97,8 +149,9 @@ client.on('messageCreate', async message => {
     } else if (commandName === 'help') {
       return message.reply(`
 # ボッチーのヘルプ
-- DMまたはサーバー内でメンションするとAIが応答
+- メンション or DM で会話
 - スレッド内ではメンション不要
+- 「検索して〜」などの自然な言い方でWeb検索＋要約
 - コマンド一覧:
   - !clear: 履歴クリア
   - !help: ヘルプ表示
@@ -106,14 +159,29 @@ client.on('messageCreate', async message => {
     }
   }
 
+  // 「検索」キーワードが含まれていればトリガー
+  let query = null;
+  if (/検索|調べて/.test(rawContent)) {
+    query = rawContent.replace(/.*(検索して|検索|調べて)/i, '').trim();
+  }
+
+  if (query) {
+    console.log(`[検索要求] トリガー検出、検索へ進行: ${query}`);
+    return braveSearchAndSummarize(message, query);
+  } else {
+    console.log('[検索要求] トリガー未検出、通常対話へ移行');
+  }
+
+  // 通常のGemini対話
+  let prompt = '';
   if (!message.guildId) {
-    prompt = message.content.trim();
+    prompt = rawContent.trim();
   } else if (
-    message.channel.isThread() || 
-    message.content.includes(botMention) || 
+    message.channel.isThread() ||
+    rawContent.includes(botMention) ||
     message.mentions.users.has(client.user.id)
   ) {
-    prompt = message.content.replace(/<@!?\d+>/g, '').trim();
+    prompt = rawContent.replace(/<@!?\d+>/g, '').trim();
   } else {
     return;
   }
@@ -122,9 +190,7 @@ client.on('messageCreate', async message => {
 
   try {
     message.channel.sendTyping().catch(console.error);
-
     const history = conversationHistory.getFormattedHistory(message.channel.id);
-
     const fullPrompt = `
 ${character.systemPrompt}
 
@@ -137,6 +203,7 @@ ${history}
 
 回答:`;
 
+    console.log('[対話処理] Geminiへ送信するプロンプト: \n', fullPrompt);
     const result = await model.generateContent(fullPrompt);
     const response = result.response.text();
 
@@ -149,15 +216,13 @@ ${history}
       message.reply(response);
     }
   } catch (error) {
-    console.error('Error:', error);
-    message.reply('申し訳ありません。エラーが発生しました。');
+    console.error('通常対話中にエラー:', error);
+    message.reply('申し訳ありません、応答中にエラーが発生しました。');
   }
 });
 
-// ログイン
 client.login(process.env.DISCORD_TOKEN);
 
-// メッセージ分割関数
 function splitMessage(text, maxLength = 2000) {
   const chunks = [];
   for (let i = 0; i < text.length; i += maxLength) {

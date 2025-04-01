@@ -1,6 +1,5 @@
 // ポリフィルを追加
-require('web-streams-polyfill/ponyfill');
-global.ReadableStream = globalThis.ReadableStream;
+require('./fix-streams');
 
 require('dotenv').config();
 const { Client, Intents, MessageEmbed } = require('discord.js');
@@ -32,7 +31,7 @@ let model;
 try {
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   model = genAI.getGenerativeModel({ 
-    model: "gemini-pro",
+    model: "gemini-1.5-flash-latest",
     generationConfig: {
       temperature: 0.7,
       topK: 40,

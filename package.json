@@ -4,7 +4,7 @@
   "description": "Discord bot using Gemini API",
   "main": "index.js",
   "engines": {
-    "node": ">=16.9.0"
+    "node": ">=18.0.0"
   },
   "scripts": {
     "start": "node index.js"
@@ -16,6 +16,7 @@
     "discord.js": "^14.14.1",
     "dotenv": "^16.4.5",
     "express": "^4.18.2",
-    "node-cache": "^5.1.2"
+    "node-cache": "^5.1.2",
+    "web-streams-polyfill": "^4.1.0"
   }
 }

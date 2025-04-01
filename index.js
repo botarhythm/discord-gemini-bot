@@ -33,8 +33,8 @@ let model;
 try {
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   model = genAI.getGenerativeModel({ 
-    model: "gemini-pro",
-    generationConfig: {
+  model: "gemini-1.5-flash",
+  generationConfig: {
       temperature: 0.7,
       topK: 40,
       topP: 0.95,

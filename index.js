@@ -52,12 +52,17 @@ class ConversationHistory {
     this.histories = new Map();
     this.maxHistoryLength = 15;
     this.contextWindow = 5;
+    this.lastInteractionTime = new Map(); // 最後の対話時間を追跡
+    this.INTERACTION_TIMEOUT = 15 * 60 * 1000; // 15分のタイムアウト
   }
 
   addMessage(channelId, role, content) {
     if (!this.histories.has(channelId)) {
       this.histories.set(channelId, []);
     }
+    
+    // 最後の対話時間を更新
+    this.lastInteractionTime.set(channelId, Date.now());
 
     const history = this.histories.get(channelId);
     
@@ -76,6 +81,15 @@ class ConversationHistory {
   }
 
   getFormattedHistory(channelId) {
+    // タイムアウトチェック
+    const lastInteraction = this.lastInteractionTime.get(channelId) || 0;
+    const currentTime = Date.now();
+    
+    // タイムアウト経過したら履歴をクリア
+    if (currentTime - lastInteraction > this.INTERACTION_TIMEOUT) {
+      this.clearHistory(channelId);
+    }
+    
     const history = this.histories.get(channelId) || [];
     const recentHistory = history.slice(-this.contextWindow);
     

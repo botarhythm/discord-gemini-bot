@@ -4,25 +4,19 @@
   "description": "Discord bot using Gemini API",
   "main": "index.js",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=16.9.0 <17.0.0"
   },
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "setup": "chmod +x setup-node16.sh && ./setup-node16.sh"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.2.1",
-    "axios": "^1.8.4",
-    "cheerio": "^1.0.0",
-    "discord.js": "^14.14.1",
-    "dotenv": "^16.4.5",
+    "@google/generative-ai": "^0.1.3",
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
+    "discord.js": "13.16.0",
+    "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "node-cache": "^5.1.2",
-    "web-streams-polyfill": "^4.1.0"
-  },
-  "glitch": {
-    "projectType": "generated_static",
-    "buildDirectory": "",
-    "installDependencies": true,
-    "nodeVersion": "18.19.0"
+    "node-cache": "^5.1.2"
   }
 }

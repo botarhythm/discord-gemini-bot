@@ -1,13 +1,11 @@
-// ポリフィルを追加
-require('./fix-streams');
-
+// Discord.js v13に完全対応したindex.js
 require('dotenv').config();
-const { Client, Intents, MessageEmbed } = require('discord.js');
+const { Client, Intents, MessageEmbed, Message } = require('discord.js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const character = require('./config/character');
-const ConversationHistory = require('./utils/conversationHistory');
-const WebSearch = require('./utils/webSearch');
-const { handleCommand } = require('./commands');
+const fs = require('fs');
+const path = require('path');
+const express = require('express');
 
 // 環境変数の確認
 console.log('Environment variables:');
@@ -31,7 +29,7 @@ let model;
 try {
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   model = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-flash-latest",
+    model: "gemini-pro",
     generationConfig: {
       temperature: 0.7,
       topK: 40,
@@ -44,15 +42,90 @@ try {
   console.error('Gemini API initialization error:', error);
 }
 
+// 会話履歴を管理するクラス
+class ConversationHistory {
+  constructor() {
+    this.histories = new Map();
+    this.maxHistoryLength = 15;
+    this.contextWindow = 5;
+  }
+
+  addMessage(channelId, role, content) {
+    if (!this.histories.has(channelId)) {
+      this.histories.set(channelId, []);
+    }
+
+    const history = this.histories.get(channelId);
+    
+    history.push({ 
+      role, 
+      content, 
+      timestamp: Date.now() 
+    });
+
+    while (history.length > this.maxHistoryLength) {
+      history.shift();
+    }
+
+    console.log(`Added message to history for channel ${channelId}`);
+    console.log(`Current history length: ${history.length}`);
+  }
+
+  getFormattedHistory(channelId) {
+    const history = this.histories.get(channelId) || [];
+    const recentHistory = history.slice(-this.contextWindow);
+    
+    let formattedHistory = '';
+    
+    recentHistory.forEach((message, index) => {
+      const timeAgo = this.getTimeAgo(message.timestamp);
+      formattedHistory += `${message.role === 'user' ? 'ユーザー' : 'アシスタント'}: ${message.content} (${timeAgo})\n`;
+      
+      if (index < recentHistory.length - 1) {
+        formattedHistory += '\n';
+      }
+    });
+
+    return formattedHistory;
+  }
+
+  getTimeAgo(timestamp) {
+    const now = Date.now();
+    const diff = now - timestamp;
+    
+    const minutes = Math.floor(diff / (1000 * 60));
+    
+    if (minutes < 1) {
+      return '今';
+    } else if (minutes < 60) {
+      return `${minutes}分前`;
+    } else {
+      const hours = Math.floor(minutes / 60);
+      return `${hours}時間前`;
+    }
+  }
+
+  clearHistory(channelId) {
+    if (this.histories.has(channelId)) {
+      this.histories.delete(channelId);
+      console.log(`Cleared history for channel ${channelId}`);
+    }
+  }
+
+  getHistory(channelId) {
+    return this.histories.get(channelId) || [];
+  }
+
+  getHistoryLength(channelId) {
+    return (this.histories.get(channelId) || []).length;
+  }
+}
+
 // 会話履歴の初期化
 const conversationHistory = new ConversationHistory();
 
-// WebSearchの初期化
-const webSearch = new WebSearch();
-
 // Glitch用の設定
 const port = process.env.PORT || 3000;
-const express = require('express');
 const app = express();
 
 // ヘルスチェック用のエンドポイント
@@ -113,7 +186,6 @@ client.on('messageCreate', async message => {
   }
 
   let prompt = '';
-  let isCommand = false;
   const botMention = `<@${client.user.id}>`;
   const prefix = process.env.PREFIX || '!';
 
@@ -177,18 +249,6 @@ client.on('messageCreate', async message => {
     // タイピングインジケーターを表示
     message.channel.sendTyping().catch(console.error);
 
-    // 検索を実行
-    let searchResults = [];
-    let formattedSearchResults = '';
-    
-    try {
-      searchResults = await webSearch.search(prompt);
-      formattedSearchResults = webSearch.formatResults(searchResults);
-    } catch (searchError) {
-      console.error('Search error:', searchError);
-      formattedSearchResults = '検索中にエラーが発生しました。検索結果なしで回答します。';
-    }
-
     // 会話履歴を取得
     const history = conversationHistory.getFormattedHistory(message.channel.id);
     
@@ -196,14 +256,10 @@ client.on('messageCreate', async message => {
     const fullPrompt = `
 ${character.systemPrompt}
 
-以下の会話履歴と検索結果を参考に、質問に答えてください。
-検索結果に基づいて、できるだけ具体的な情報を提供してください。
+以下の会話履歴を参考に、質問に答えてください。
 
 会話履歴:
 ${history}
-
-検索結果:
-${formattedSearchResults}
 
 質問: ${prompt}
 

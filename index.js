@@ -3,7 +3,7 @@ require('web-streams-polyfill/ponyfill');
 global.ReadableStream = globalThis.ReadableStream;
 
 require('dotenv').config();
-const { Client, GatewayIntentBits, Partials } = require('discord.js');
+const { Client, Intents, MessageEmbed } = require('discord.js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const character = require('./config/character');
 const ConversationHistory = require('./utils/conversationHistory');
@@ -20,12 +20,11 @@ console.log('GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? '設定されてい�
 // Discordクライアントの初期化
 const client = new Client({
   intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.DirectMessages
+    Intents.FLAGS.GUILDS,
+    Intents.FLAGS.GUILD_MESSAGES,
+    Intents.FLAGS.DIRECT_MESSAGES
   ],
-  partials: [Partials.Message, Partials.Channel, Partials.GuildMember]
+  partials: ['MESSAGE', 'CHANNEL', 'GUILD_MEMBER']
 });
 
 // Gemini APIの初期化
@@ -33,7 +32,7 @@ let model;
 try {
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   model = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-flash-latest",
+    model: "gemini-pro",
     generationConfig: {
       temperature: 0.7,
       topK: 40,
@@ -73,18 +72,22 @@ client.once('ready', async () => {
   console.log(`Bot is running in Guild: ${process.env.GUILD_ID}`);
   console.log(`Listening in Channel: ${process.env.CHANNEL_ID}`);
   
-  // ボットの状態を確認
-  const guild = await client.guilds.fetch(process.env.GUILD_ID);
-  if (guild) {
-    console.log(`Found guild: ${guild.name}`);
-    const channel = await guild.channels.fetch(process.env.CHANNEL_ID);
-    if (channel) {
-      console.log(`Found channel: ${channel.name}`);
+  try {
+    // ボットの状態を確認
+    const guild = await client.guilds.fetch(process.env.GUILD_ID);
+    if (guild) {
+      console.log(`Found guild: ${guild.name}`);
+      const channel = await guild.channels.fetch(process.env.CHANNEL_ID);
+      if (channel) {
+        console.log(`Found channel: ${channel.name}`);
+      } else {
+        console.log('Target channel not found!');
+      }
     } else {
-      console.log('Target channel not found!');
+      console.log('Target guild not found!');
     }
-  } else {
-    console.log('Target guild not found!');
+  } catch (error) {
+    console.error('Error fetching guild or channel:', error);
   }
 });
 
@@ -123,11 +126,30 @@ client.on('messageCreate', async message => {
     const args = message.content.slice(prefix.length).trim().split(/ +/);
     const commandName = args.shift().toLowerCase();
     
-    // コマンドハンドラーに処理を委譲
-    isCommand = await handleCommand(commandName, message, args, client, conversationHistory, model);
-    
-    // コマンドが処理されたら終了
-    if (isCommand) {
+    // 簡易コマンド処理
+    if (commandName === 'clear') {
+      conversationHistory.clearHistory(message.channel.id);
+      await message.reply('会話履歴をクリアしました！');
+      return;
+    } else if (commandName === 'help') {
+      await message.reply(`
+# ボッチーのヘルプ
+
+## 基本的な使い方
+- DMでメッセージを送るか、サーバー内でメンションするとAIが応答します
+- 例: <@${client.user.id}> こんにちは
+
+## コマンド一覧
+- **!clear**: 会話履歴をクリアします
+- **!help**: このヘルプメッセージを表示します
+
+## 特徴
+- フレンドリーで親しみやすい
+- 知的で賢明
+- 的確な回答
+- 好奇心旺盛
+- お役立ち情報を提供
+      `);
       return;
     }
   }
@@ -136,7 +158,7 @@ client.on('messageCreate', async message => {
   if (!message.guildId) {
     prompt = message.content.trim();
     console.log('DM detected, prompt:', prompt);
-  } else if (message.mentions.users.has(client.user.id)) {
+  } else if (message.content.includes(botMention) || message.mentions.users.has(client.user.id)) {
     // メンションを除去してプロンプトを取得
     prompt = message.content.replace(/<@!?\d+>/g, '').trim();
     console.log('Mention detected, prompt:', prompt);
@@ -154,11 +176,19 @@ client.on('messageCreate', async message => {
   
   try {
     // タイピングインジケーターを表示
-    await message.channel.sendTyping();
+    message.channel.sendTyping().catch(console.error);
 
     // 検索を実行
-    const searchResults = await webSearch.search(prompt);
-    const formattedSearchResults = webSearch.formatResults(searchResults);
+    let searchResults = [];
+    let formattedSearchResults = '';
+    
+    try {
+      searchResults = await webSearch.search(prompt);
+      formattedSearchResults = webSearch.formatResults(searchResults);
+    } catch (searchError) {
+      console.error('Search error:', searchError);
+      formattedSearchResults = '検索中にエラーが発生しました。検索結果なしで回答します。';
+    }
 
     // 会話履歴を取得
     const history = conversationHistory.getFormattedHistory(message.channel.id);
